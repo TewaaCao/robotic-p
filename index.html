@@ -181,6 +181,45 @@
             updateRadarPosition(); // Update radar position
         }
 
+        // Function to handle aircraft marker click event
+function onAircraftMarkerClick(e) {
+    var aircraftMarker = e.target;
+    showControls(aircraftMarker);
+}
+
+// Function to show control buttons for the selected aircraft
+function showControls(aircraftMarker) {
+    // Display control buttons for up, down, right, left
+    // You can use HTML elements or a custom control panel for this
+
+    // Example: Display control buttons in the console
+    console.log("Control the aircraft:");
+    console.log("Press 'W' for UP, 'S' for DOWN, 'D' for RIGHT, 'A' for LEFT");
+    
+    // Implement control logic based on user input
+    document.addEventListener('keydown', function(event) {
+        switch(event.key) {
+            case 'w':
+                // Move aircraft up
+                break;
+            case 's':
+                // Move aircraft down
+                break;
+            case 'd':
+                // Move aircraft right
+                break;
+            case 'a':
+                // Move aircraft left
+                break;
+        }
+    });
+}
+
+// Add click event listener to each aircraft marker
+aircraftMarkers.forEach(marker => {
+    marker.on('click', onAircraftMarkerClick);
+});
+
         // Function to handle geolocation errors
         function handleError(error) {
             switch (error.code) {
