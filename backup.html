@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Aircraft GPS</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            height: 100%;
+        }
+
+        .radar-sweep {
+            position: absolute;
+            width: 800px;
+            height: 800px;
+            border-radius: 50%;
+            border: 2px solid red;
+            pointer-events: none; /* This prevents the radar from interfering with map interactions */
+            animation: radar-animation 2s linear infinite;
+            z-index: 9999;
+            overflow: hidden; /* Ensure that only the visible part of the line animation is displayed */
+            display: flex; /* Make the radar container a flex container */
+            justify-content: center; /* Center the line animation horizontally */
+            align-items: center; /* Center the line animation vertically */
+        }
+
+        .radar-line {
+            position: absolute;
+            width: 100%;
+            height: 2px; /* Adjust the height of the line as needed */
+            background-color: blue; /* Adjust the color of the line as needed */
+            transform-origin: center; /* Set the rotation origin to the center of the line */
+            animation: line-animation 10s linear infinite;
+        }
+
+        @keyframes radar-animation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes line-animation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom styles for the map tiles */
+        .leaflet-tile {
+            filter: grayscale(100%); /* Make the map tiles grayscale */
+        }
+
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="radar" class="radar-sweep">
+        <div class="radar-line"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+        }).addTo(map);
+
+        var aircraftIcon = L.icon({
+            iconUrl: 'aircraft-icon.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+            popupAnchor: [0, -16]
+        });
+
+        var radarSize = 800; // Size of radar sweep (diameter)
+        var radar = document.getElementById('radar');
+        var aircraftMarkers = []; // Array to store aircraft markers
+        var userMarker; // Variable to store the user's marker
+
+        // Function to show user's location on the map
+        function showUserLocation(lat, lng) {
+            if (!userMarker) {
+                userMarker = L.marker([lat, lng]).addTo(map);
+            } else {
+                userMarker.setLatLng([lat, lng]);
+            }
+        }
+
+        // Function to update aircraft markers
+        function updateAircraft(lat, lng) {
+            showUserLocation(lat, lng); // Show user's location on the map
+
+            fetchAircraft(lat, lng)
+                .then(data => {
+                    var nearbyAircraft = data.states.filter(state => {
+                        var aircraftLat = state[6];
+                        var aircraftLng = state[5];
+                        var distance = getDistance(lat, lng, aircraftLat, aircraftLng);
+                        return distance <= radarSize / 2; // Filter aircraft within the radar circle
+                    });
+
+                    // Clear existing aircraft markers from the map
+                    aircraftMarkers.forEach(marker => {
+                        map.removeLayer(marker);
+                    });
+                    aircraftMarkers = []; // Clear the array
+
+                    // Add nearby aircraft markers to the map
+                    nearbyAircraft.forEach(state => {
+                        var aircraftLat = state[6];
+                        var aircraftLng = state[5];
+                        var aircraftMarker = L.marker([aircraftLat, aircraftLng], { icon: aircraftIcon }).addTo(map);
+                        aircraftMarkers.push(aircraftMarker);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching aircraft data:', error);
+                });
+        }
+
+        // Function to fetch aircraft positions from OpenSky API
+        function fetchAircraft(lat, lng) {
+            var url = 'https://opensky-network.org/api/states/all?lamin=' + (lat - 1) +
+                    '&lomin=' + (lng - 1) + '&lamax=' + (lat + 1) + '&lomax=' + (lng + 1);
+            return fetch(url)
+                .then(response => response.json());
+        }
+
+        // Function to calculate distance between two points using Haversine formula
+        function getDistance(lat1, lng1, lat2, lng2) {
+            var R = 6371; // Radius of the Earth in km
+            var dLat = deg2rad(lat2 - lat1);
+            var dLng = deg2rad(lng2 - lng1);
+            var a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            var distance = R * c; // Distance in km
+            return distance;
+        }
+
+        function deg2rad(deg) {
+            return deg * (Math.PI / 180);
+        }
+
+        // Function to continuously update radar position
+        function updateRadarPosition() {
+            if (userMarker) { // Check if userMarker is defined
+                var markerPos = map.latLngToContainerPoint(userMarker.getLatLng());
+                radar.style.left = markerPos.x - radarSize / 2 + 'px';
+                radar.style.top = markerPos.y - radarSize / 2 + 'px';
+                requestAnimationFrame(updateRadarPosition);
+            }
+        }
+
+        // Function to periodically update aircraft positions
+        function updateAircraftPositions(lat, lng) {
+            setInterval(() => {
+                updateAircraft(lat, lng);
+            }, 5000); // Update every 5 seconds (you can adjust this interval as needed)
+        }
+
+        // Function to get user's location
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(showPosition, handleError, { enableHighAccuracy: true });
+            } else {
+                alert("Geolocation is not supported by this browser.");
+            }
+        }
+
+        // Function to handle user's position
+        function showPosition(position) {
+            var lat = position.coords.latitude;
+            var lng = position.coords.longitude;
+            updateAircraftPositions(lat, lng); // Update aircraft positions periodically
+            map.setView([lat, lng], map.getZoom()); // Zoom in on the user's location
+            updateRadarPosition(); // Update radar position
+        }
+
+        // Function to handle geolocation errors
+        function handleError(error) {
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    alert("User denied the request for Geolocation.");
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    alert("Location information is unavailable.");
+                    break;
+                case error.TIMEOUT:
+                    alert("The request to get user location timed out.");
+                    break;
+                case error.UNKNOWN_ERROR:
+                    alert("An unknown error occurred.");
+                    break;
+            }
+        }
+
+        // Call the getLocation function to start getting the user's location
+        getLocation();
+    </script>
+</body>
+</html>
